@@ -66,8 +66,8 @@ cloud resources. If cleanup fails, follow the [recovery steps](docs/setup.md#cle
 ## Using the app
 
 - **Enter** sends a message. **Shift+Enter** adds a new line.
-- **Ctrl+V** pastes a copied image into the composer. Review its thumbnail, add an
-  optional caption, then send. The **×** in the thumbnail's corner removes it.
+- **Ctrl+V** (**Command+V** on macOS) pastes a copied image into the composer.
+  Review its thumbnail, add an optional caption, then send. The **×** in the thumbnail's corner removes it.
   One image per message is supported, up to 10 MiB and 16 megapixels.
 - Hover over a message to reply, quote, or react.
 - Hover over or right-click your own text message and choose **Edit message**.

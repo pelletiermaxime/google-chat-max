@@ -120,7 +120,7 @@ func pasteImageFixture(t *testing.T, tt *ui.Tester, callbacks chan func()) {
 	if err := tt.Click("Message draft"); err != nil {
 		t.Fatal(err)
 	}
-	tt.TypeKey(ui.Ctrl, ui.KeyV, "")
+	tt.TypeKey(ui.Cmd, ui.KeyV, "")
 	applyNext(t, callbacks)
 	tt.Frame()
 }
@@ -166,7 +166,7 @@ func TestNativeComposerPastesPreviewsAndRemovesImageWithoutUpload(t *testing.T) 
 			if err := tt.Click("Message draft"); err != nil {
 				t.Fatal(err)
 			}
-			tt.TypeKey(ui.Ctrl, ui.KeyV, "")
+			tt.TypeKey(ui.Cmd, ui.KeyV, "")
 			if !bytes.Contains([]byte(d.Text), []byte("text paste")) || clipboard.reads != 1 {
 				t.Fatal("normal text paste was intercepted as an image")
 			}
