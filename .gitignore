@@ -1,0 +1,16 @@
+/bin/
+/dist/
+/.cache/
+/.local/
+/.env
+/.env.*
+!.env.example
+*.log
+*.prof
+*.test
+*.pem
+*.key
+credentials*.json
+client_secret*.json
+token*.json
+.DS_Store

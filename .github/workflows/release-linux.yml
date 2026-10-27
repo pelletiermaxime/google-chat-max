@@ -1,0 +1,105 @@
+name: Release Linux
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package Linux x86-64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GOMAXPROCS: '6'
+      CGO_ENABLED: '1'
+      CHAT_MAX_LIVE_TEST: '0'
+      CHAT_MAX_LIVE_STREAM_TEST: '0'
+      CHAT_MAX_SOAK_TEST: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Inspect memory limits
+        run: |
+          cat /proc/self/cgroup
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('/sys/fs/cgroup')
+          relative = next(line.split('::', 1)[1] for line in Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::'))
+          path = root / relative.lstrip('/')
+          while path.is_relative_to(root):
+              for name in ('memory.max', 'memory.high'):
+                  limit = path / name
+                  if limit.exists():
+                      print(f'{limit}: {limit.read_text().strip()}')
+              path = path.parent
+          PY
+      - name: Download and verify dependencies
+        run: |
+          go mod download
+          go mod verify
+      - name: Offline tests
+        run: sh scripts/check.sh
+      - name: Vet
+        run: GOCACHE="$PWD/.cache/go-build" go vet -mod=readonly -p 6 ./...
+      - name: Package binary, notices, and checksum
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: sh scripts/package-linux.sh "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-amd64-release
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish experimental prerelease
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-amd64-release
+          path: dist
+      - name: Create prerelease with Linux assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          Experimental Google Chat Max build for Linux x86-64 (glibc 2.35+).
+
+          Download the archive and matching `.sha256` file, verify with
+          `sha256sum -c google-chat-max-*-linux-amd64.tar.gz.sha256`, then extract it.
+          Run `./google-chat-max -demo` to explore without credentials.
+
+          The archive includes setup instructions, third-party notices, and
+          `BUILD.txt` with source and toolchain details. Real-account access needs
+          your own Google Cloud project and a user OAuth login through `gws`.
+          Opening a configured app creates isolated cloud resources and may incur
+          charges. Sleep/wake, overnight use, prolonged outages, and real-account
+          sends/reactions still need broader validation. See the bundled README.
+          EOF
+          gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.sha256 \
+            --verify-tag --prerelease --latest=false \
+            --title "Google Chat Max $RELEASE_TAG (experimental)" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
