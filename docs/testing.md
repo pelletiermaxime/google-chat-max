@@ -1,4 +1,22 @@
-# Testing
+# Development
+
+## Build
+
+Install Go 1.27.3+, a C compiler (`build-essential` on Ubuntu or `base-devel` on
+Arch), and the [Linux runtime packages](setup.md#linux-packages).
+
+```sh
+GOMAXPROCS=6 go build -mod=readonly -tags=netcgo -p 6 -o bin/google-chat-max ./cmd/google-chat-max
+./bin/google-chat-max -demo
+```
+
+Check the effective cgroup memory limit before substantial builds or tests.
+Use `GOMAXPROCS=6` and `-p 6`; stop if a process is killed for running out of memory.
+
+The Linux build uses the system DNS resolver unless `GODEBUG=netdns=...` overrides
+it. Python 3 is needed for packaging, emoji regeneration, and the relaunch helper.
+`sh scripts/relaunch.sh` closes this checkout's running app, waits for cleanup,
+and opens the rebuilt binary.
 
 ## Local tests
 
@@ -7,7 +25,7 @@ Run from the repository root:
 ```sh
 sh scripts/check.sh
 sh scripts/check.sh --race
-GOCACHE="$PWD/.cache/go-build" GOMAXPROCS=2 go vet -p 2 ./...
+GOCACHE="$PWD/.cache/go-build" GOMAXPROCS=6 go vet -p 6 ./...
 ```
 
 The check script builds test executables in `.cache/testbin/` and runs tests
@@ -51,3 +69,33 @@ GODEBUG=netdns=cgo CHAT_MAX_LIVE_STREAM_TEST=1 ./.cache/testbin/chat.test \
 The synthetic event goes only to the test's private Pub/Sub topic. These tests
 send no Chat messages or reactions. Testing real posting or reactions requires
 an explicit user action or authorization.
+
+## Release builds
+
+Pushing a new `v*` tag runs the [Linux release workflow](../.github/workflows/release-linux.yml).
+It tests, vets, and builds on Ubuntu 22.04, then publishes an experimental GitHub
+prerelease. The archive contains the binary, documentation, third-party notices,
+and `BUILD.txt`; a SHA-256 file is attached separately. Publication uses GitHub's
+built-in token and needs no Google credentials.
+
+To build the same package locally:
+
+```sh
+sh scripts/package-linux.sh dev
+```
+
+Packages go in `dist/`. Local builds use the host's libc; the glibc 2.35 baseline
+applies to the Ubuntu-built release assets. Published releases aren't overwritten.
+If publication fails, check for an incomplete draft before rerunning the workflow.
+The application code still needs a license before a public open-source release.
+
+## README screenshot
+
+After building the test executables, capture the native demo view with:
+
+```sh
+CHAT_MAX_SCREENSHOT="$PWD/docs/images/google-chat-max.png" ./.cache/testbin/desktop.test \
+  -test.run '^TestNativeConversationSelectionSearchRefreshAndEmptyHistory$' -test.timeout=30s
+```
+
+This uses synthetic conversations and makes no Google calls.
