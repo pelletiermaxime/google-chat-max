@@ -18,7 +18,7 @@ type ThreadHistory struct {
 	Page HistoryPage
 }
 
-const messageFields = "name,createTime,lastUpdateTime,text,fallbackText,cards,cardsV2,sender,emojiReactionSummaries,quotedMessageMetadata(name,lastUpdateTime,quotedMessageSnapshot(sender,text)),thread(name),threadReply,attachment(name,contentName,contentType,source,attachmentDataRef(resourceName))"
+const messageFields = "name,createTime,lastUpdateTime,text,fallbackText,cards,cardsV2,sender,emojiReactionSummaries,quotedMessageMetadata(name,lastUpdateTime,quotedMessageSnapshot(sender,text)),thread(name),threadReply,attachment(name,contentName,contentType,source,attachmentDataRef(resourceName)),attachedGifs(uri)"
 
 const InitialHistoryLimit = 20
 

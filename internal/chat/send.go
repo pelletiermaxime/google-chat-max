@@ -34,23 +34,36 @@ func NewRequestID() (string, error) {
 // Send is called only after an explicit user action. Retries must keep the same
 // request ID, destination and text so Google can return the original message.
 func (c *Client) Send(ctx context.Context, space, thread, text, requestID string) (Message, error) {
-	return c.send(ctx, space, thread, text, requestID, nil)
+	return c.send(ctx, space, thread, text, requestID, nil, nil)
 }
 
 func (c *Client) SendQuoted(ctx context.Context, space, thread, text, requestID string, quote QuotedMessageMetadata) (Message, error) {
 	if MessageSpace(quote.Name) != space || quote.LastUpdateTime.IsZero() {
 		return Message{}, errors.New("invalid quoted message or missing version timestamp")
 	}
-	return c.send(ctx, space, thread, text, requestID, &quote)
+	return c.send(ctx, space, thread, text, requestID, &quote, nil)
 }
 
-func (c *Client) send(ctx context.Context, space, thread, text, requestID string, quote *QuotedMessageMetadata) (Message, error) {
-	if !validSpace(space) || (thread != "" && !ValidThread(space, thread)) || len(requestID) != 36 || strings.TrimSpace(text) == "" {
+func (c *Client) send(ctx context.Context, space, thread, text, requestID string, quote *QuotedMessageMetadata, attachments []UploadedAttachment) (Message, error) {
+	if !validSpace(space) || (thread != "" && !ValidThread(space, thread)) || len(requestID) != 36 || (strings.TrimSpace(text) == "" && len(attachments) == 0) || len(attachments) > 4 {
 		return Message{}, errors.New("invalid message destination, text, or request ID")
 	}
 	body := map[string]any{"text": text}
 	if quote != nil {
+		if MessageSpace(quote.Name) != space || quote.LastUpdateTime.IsZero() {
+			return Message{}, errors.New("invalid quoted message or missing version timestamp")
+		}
 		body["quotedMessageMetadata"] = map[string]string{"name": quote.Name, "lastUpdateTime": quote.LastUpdateTime.Format(time.RFC3339Nano)}
+	}
+	if len(attachments) > 0 {
+		refs := make([]map[string]AttachmentDataRef, 0, len(attachments))
+		for _, attachment := range attachments {
+			if attachment.Space != space || !validUploadRef(attachment.DataRef) {
+				return Message{}, errors.New("image upload does not belong to this conversation or is incomplete")
+			}
+			refs = append(refs, map[string]AttachmentDataRef{"attachmentDataRef": attachment.DataRef})
+		}
+		body["attachment"] = refs
 	}
 	query := url.Values{"requestId": {requestID}}
 	if thread != "" {
@@ -84,7 +97,7 @@ func (c *Client) send(ctx context.Context, space, thread, text, requestID string
 	}
 	// Idempotent repeat responses may echo only part of the original message.
 	// Hydrate metadata without turning an already accepted send into a failure.
-	if m.Thread.Name == "" || m.CreateTime.IsZero() {
+	if m.Thread.Name == "" || m.CreateTime.IsZero() || (len(attachments) > 0 && len(m.Attachment) == 0) {
 		var full Message
 		if c.get(ctx, "/"+m.Name, url.Values{"fields": {messageFields}}, &full) == nil && full.Name == m.Name {
 			m = full
@@ -98,6 +111,11 @@ func (c *Client) send(ctx context.Context, space, thread, text, requestID string
 	}
 	if m.Text == "" {
 		m.Text = text
+	}
+	if len(m.Attachment) == 0 {
+		for _, attachment := range attachments {
+			m.Attachment = append(m.Attachment, Attachment{ContentName: attachment.Filename, ContentType: attachment.ContentType, Source: "UPLOADED_CONTENT", AttachmentDataRef: attachment.DataRef})
+		}
 	}
 	if m.QuotedMessageMetadata == nil && quote != nil {
 		copy := *quote

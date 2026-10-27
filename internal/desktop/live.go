@@ -136,6 +136,16 @@ func (a *App) applyStreamEvent(event chat.StreamEvent) {
 	if space == "" {
 		return
 	}
+	at := slices.IndexFunc(a.spaces, func(s chat.Space) bool { return s.Name == space })
+	if at < 0 && len(a.spaces) < 1000 {
+		at = len(a.spaces)
+		a.spaces = append(a.spaces, chat.Space{Name: space, LastActiveTime: m.CreateTime})
+	} else if at >= 0 && m.CreateTime.After(a.spaces[at].LastActiveTime) {
+		a.spaces[at].LastActiveTime = m.CreateTime
+	}
+	if at >= 0 {
+		a.queueSpaceMetadata(a.spaces[at])
+	}
 	// Deduplicate by message name, including redeliveries with a different
 	// CloudEvent ID. The ring is bounded; selected history is deduped too.
 	if _, seen := a.seenMessages[m.Name]; seen {
@@ -148,12 +158,6 @@ func (a *App) applyStreamEvent(event chat.StreamEvent) {
 	if len(a.seenOrder) > 2048 {
 		delete(a.seenMessages, a.seenOrder[0])
 		a.seenOrder = a.seenOrder[1:]
-	}
-	at := slices.IndexFunc(a.spaces, func(s chat.Space) bool { return s.Name == space })
-	if at < 0 && len(a.spaces) < 1000 {
-		a.spaces = append(a.spaces, chat.Space{Name: space, LastActiveTime: m.CreateTime})
-	} else if at >= 0 && m.CreateTime.After(a.spaces[at].LastActiveTime) {
-		a.spaces[at].LastActiveTime = m.CreateTime
 	}
 	if space != a.selected {
 		a.cacheIncoming(space, m)

@@ -62,6 +62,7 @@ type Reaction struct {
 type Reactions struct {
 	Summaries []ReactionSummary
 	Mine      []Reaction
+	All       []Reaction
 }
 
 func (r Reactions) Has(emoji Emoji) bool {
@@ -116,10 +117,19 @@ func (c *Client) myReactions(ctx context.Context, message string) ([]Reaction, e
 	if err != nil {
 		return nil, err
 	}
+	return c.listReactions(ctx, message, self)
+}
+
+func (c *Client) listReactions(ctx context.Context, message, user string) ([]Reaction, error) {
 	// The API returns HTTP 500 for users/me in this filter. Use the resolved ID.
-	query := url.Values{"pageSize": {"200"}, "filter": {"user.name = " + strconv.Quote(self)}, "fields": {"reactions(name,emoji,user(name)),nextPageToken"}}
-	var mine []Reaction
-	for range 2 {
+	query := url.Values{"pageSize": {"200"}, "fields": {"reactions(name,emoji,user(name,displayName)),nextPageToken"}}
+	pages, limit := 5, 1000
+	if user != "" {
+		query.Set("filter", "user.name = "+strconv.Quote(user))
+		pages, limit = 2, 400
+	}
+	var reactions []Reaction
+	for range pages {
 		var page struct {
 			Reactions []Reaction `json:"reactions"`
 			Next      string     `json:"nextPageToken"`
@@ -128,24 +138,31 @@ func (c *Client) myReactions(ctx context.Context, message string) ([]Reaction, e
 			return nil, err
 		}
 		for _, r := range page.Reactions {
-			if r.User.Name != self || ReactionMessage(r.Name) != message {
+			if (user != "" && r.User.Name != user) || ReactionMessage(r.Name) != message {
 				return nil, errors.New("reaction ownership could not be verified")
 			}
-			mine = append(mine, r)
+			reactions = append(reactions, r)
 		}
-		if len(mine) > 400 {
+		if len(reactions) > limit {
 			return nil, errors.New("reaction list exceeds its limit")
 		}
 		if page.Next == "" {
-			return mine, nil
+			return reactions, nil
 		}
 		query.Set("pageToken", page.Next)
 	}
-	return nil, errors.New("reaction list exceeds its two-page limit")
+	return nil, errors.New("reaction list exceeds its page limit")
 }
 
 func (c *Client) Reactions(ctx context.Context, message string) (Reactions, error) {
-	mine, err := c.myReactions(ctx, message)
+	if MessageSpace(message) == "" {
+		return Reactions{}, errors.New("invalid reaction message")
+	}
+	self, err := c.ResolveIdentity(ctx)
+	if err != nil {
+		return Reactions{}, err
+	}
+	all, err := c.listReactions(ctx, message, "")
 	if err != nil {
 		return Reactions{}, err
 	}
@@ -153,7 +170,13 @@ func (c *Client) Reactions(ctx context.Context, message string) (Reactions, erro
 	if err := c.get(ctx, "/"+message, url.Values{"fields": {"name,emojiReactionSummaries"}}, &m); err != nil {
 		return Reactions{}, err
 	}
-	return Reactions{Summaries: m.EmojiReactionSummaries, Mine: mine}, nil
+	state := Reactions{Summaries: m.EmojiReactionSummaries, All: all}
+	for _, reaction := range all {
+		if reaction.User.Name == self {
+			state.Mine = append(state.Mine, reaction)
+		}
+	}
+	return state, nil
 }
 
 // SetReaction applies a desired state, so retrying an uncertain request never

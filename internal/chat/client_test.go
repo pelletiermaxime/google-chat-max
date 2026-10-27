@@ -122,3 +122,30 @@ func TestHistoryCancellation(t *testing.T) {
 		t.Fatal("history request did not cancel")
 	}
 }
+
+func TestSpaceMetadataUsesReadOnlyLookupAndValidatesResponse(t *testing.T) {
+	requests := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodGet || r.URL.Path != "/spaces/meeting" || r.URL.Query().Get("fields") != spaceFields {
+			t.Error("metadata lookup changed its destination or fields")
+		}
+		if requests == 1 {
+			fmt.Fprint(w, `{"name":"spaces/meeting","displayName":"Scrum dev - Oct 27","spaceType":"SPACE","spaceThreadingState":"UNTHREADED_MESSAGES"}`)
+		} else {
+			fmt.Fprint(w, `{"name":"spaces/other","spaceType":"SPACE"}`)
+		}
+	}))
+	defer s.Close()
+	c := &Client{http: s.Client(), baseURL: s.URL}
+	if _, err := c.Space(context.Background(), "spaces/meeting/messages/m"); err == nil || requests != 0 {
+		t.Fatal("invalid conversation reached the metadata endpoint")
+	}
+	space, err := c.Space(context.Background(), "spaces/meeting")
+	if err != nil || space.DisplayName != "Scrum dev - Oct 27" || space.SpaceThreadingState != "UNTHREADED_MESSAGES" {
+		t.Fatalf("meeting metadata was lost: %v", err)
+	}
+	if _, err := c.Space(context.Background(), "spaces/meeting"); err == nil {
+		t.Fatal("metadata for a different conversation was accepted")
+	}
+}

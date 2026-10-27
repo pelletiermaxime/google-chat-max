@@ -68,7 +68,7 @@ jobs:
           retention-days: 7
 
   release:
-    name: Publish experimental prerelease
+    name: Publish release
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -79,14 +79,14 @@ jobs:
         with:
           name: linux-amd64-release
           path: dist
-      - name: Create prerelease with Linux assets
+      - name: Create release with Linux assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
-          Experimental Google Chat Max build for Linux x86-64 (glibc 2.35+).
+          Google Chat Max for Linux x86-64 (glibc 2.35+).
 
           Download the archive and matching `.sha256` file, verify with
           `sha256sum -c google-chat-max-*-linux-amd64.tar.gz.sha256`, then extract it.
@@ -100,6 +100,6 @@ jobs:
           sends/reactions still need broader validation. See the bundled README.
           EOF
           gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.sha256 \
-            --verify-tag --prerelease --latest=false \
-            --title "Google Chat Max $RELEASE_TAG (experimental)" \
+            --verify-tag --prerelease=false --latest \
+            --title "Google Chat Max $RELEASE_TAG" \
             --notes-file "$RUNNER_TEMP/release-notes.md"

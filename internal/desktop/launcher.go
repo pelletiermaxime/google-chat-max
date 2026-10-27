@@ -32,6 +32,7 @@ type Launcher struct {
 	projectInput, error                                string
 	loading, setupVisible, checking, saving, switching bool
 	closing, closed                                    bool
+	focused                                            bool
 	checkGeneration                                    uint64
 	checkCancel                                        context.CancelFunc
 	auth                                               chat.AuthStatus
@@ -93,6 +94,7 @@ func (l *Launcher) startApp(config settings.Config) {
 		open = func(context.Context) (Backend, error) { return Demo(), nil }
 	}
 	l.app = New(open, l.dispatch, l.invalidate, l.options.Demo)
+	l.app.setFocused(l.focused)
 	if !l.options.Demo {
 		l.app.openSettings = l.showSettings
 	}
@@ -101,6 +103,9 @@ func (l *Launcher) startApp(config settings.Config) {
 }
 
 func (l *Launcher) showSettings() {
+	if l.app != nil {
+		l.app.setFocused(false)
+	}
 	l.projectInput, l.error, l.setupVisible = l.config.ProjectID, "", true
 	l.checkAuth()
 	l.invalidate()
@@ -204,10 +209,22 @@ func (l *Launcher) finishShutdown(err error) {
 	}
 }
 
+// SetFocused is called by native window focus/blur events on the main thread.
+func (l *Launcher) SetFocused(focused bool) {
+	l.focused = focused
+	if l.app != nil {
+		l.app.setFocused(focused && !l.setupVisible)
+	}
+}
+
 func (l *Launcher) View(c *ui.Context) {
 	if !l.loading && !l.setupVisible && l.app != nil {
+		l.app.setFocused(l.focused)
 		l.app.View(c)
 		return
+	}
+	if l.app != nil {
+		l.app.setFocused(false)
 	}
 	c.SetTheme(l.theme)
 	_, height := c.Size()

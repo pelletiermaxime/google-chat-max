@@ -11,6 +11,7 @@ import (
 var threadReplyIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 8h8M8 12h5"/></svg>`))
 var quoteReplyIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 17-5-5 5-5M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`))
 var cancelQuoteIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M6 18 18 6"/></svg>`))
+var editMessageIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 5 5-12 12-6 1 1-6zM14 5l5 5"/></svg>`))
 
 func (a *App) canReplyInThread(m chat.Message) bool {
 	_, ok := a.backend.(threadBackend)
@@ -105,6 +106,9 @@ func quoteSummary(m chat.Message) string {
 	if text == "" && len(m.Attachment) > 0 {
 		text = "Attachment · " + m.Attachment[0].ContentName
 	}
+	if text == "" && len(m.AttachedGIFs) > 0 {
+		text = "GIF"
+	}
 	if text == "" {
 		text = "Message"
 	}
@@ -180,6 +184,9 @@ func (a *App) messageActions(c *ui.Context, m chat.Message) {
 		if actionIcon(c.Key("quote-reply"), "Quote reply", quoteReplyIcon, a.theme, !a.canQuoteMessage(m)) {
 			a.quoteMessage(m)
 		}
+		if a.canEditMessage(m) && actionIcon(c.Key("edit-message"), "Edit message", editMessageIcon, a.theme, false) {
+			a.editMessage(m)
+		}
 	})
 }
 
@@ -198,6 +205,9 @@ func (a *App) messageMenu(menu *ui.Menu, m chat.Message, edit bool) {
 	}
 	if menu.Item("Quote reply").Disabled(!a.canQuoteMessage(m)).Chosen() {
 		a.quoteMessage(m)
+	}
+	if a.canEditMessage(m) && menu.Item("Edit message").Chosen() {
+		a.editMessage(m)
 	}
 	if edit {
 		menu.Separator()

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"image"
 	"image/color"
 	"image/draw"
@@ -11,6 +12,51 @@ import (
 	"google-chat-max/internal/chat"
 	"google-chat-max/internal/media"
 )
+
+type controlledGIFs struct {
+	controlledImages
+}
+
+func (b controlledGIFs) AttachedGIFImage(ctx context.Context, gif chat.AttachedGIF) (image.Image, error) {
+	// Use the controlled image worker to return synthetic frames, with the URI
+	// as its observable request key. No HTTP calls are made by this fixture.
+	return b.AttachmentImage(ctx, previewAttachment(gif.URI, "GIF", "image/gif"))
+}
+
+func TestNativePickerGIFLoadsAnimatesAndSurvivesPartialDelivery(t *testing.T) {
+	callbacks := make(chan func(), 8)
+	b := controlledGIFs{controlledImages{Backend: Demo(), calls: make(chan imageCall, 8)}}
+	a := New(nil, func(fn func()) { callbacks <- fn }, func() {}, true)
+	defer a.Close()
+	a.backend, a.selected = b, "spaces/a"
+	gif := chat.AttachedGIF{URI: "https://media.tenor.com/example/clip.gif"}
+	m := chat.Message{Name: "spaces/a/messages/picker", AttachedGIFs: []chat.AttachedGIF{gif}}
+	a.messages = []chat.Message{m}
+	tt := ui.NewTester(a.View, 1180, 780)
+	if tt.HasText("[Non-text message]") || !tt.HasText("Loading image…") || quoteSummary(m) != "GIF" {
+		t.Fatal("picker GIF still looks like an unknown message")
+	}
+	call := nextImageCall(t, b.controlledImages)
+	if call.attachment.AttachmentDataRef.ResourceName != gif.URI {
+		t.Fatal("GIF worker fetched the wrong URI")
+	}
+	clip := testAnimation()
+	call.result <- imageResult{img: clip}
+	applyNext(t, callbacks)
+	tt.Frame()
+	entry := a.images["gif:"+gif.URI]
+	if entry == nil || entry.animation != clip || !tt.HasText("Image preview · GIF") {
+		t.Fatal("picker GIF did not reach the native animated renderer")
+	}
+	tt.Advance(60 * time.Millisecond)
+	if entry.play.frame != 1 || len(b.calls) != 0 || a.imageBytes != clip.Bytes()+20*20*4 {
+		t.Fatal("picker animation lost its timing, cache reuse, or memory accounting")
+	}
+	a.enrichDelivery(chat.Message{Name: m.Name})
+	if len(a.messages[0].AttachedGIFs) != 1 {
+		t.Fatal("partial delivery erased picker media")
+	}
+}
 
 func testAnimation() *media.Animation {
 	frames := make([]*image.RGBA, 2)

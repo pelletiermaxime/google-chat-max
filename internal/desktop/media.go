@@ -17,6 +17,10 @@ type imageBackend interface {
 	AttachmentImage(context.Context, chat.Attachment) (image.Image, error)
 }
 
+type gifBackend interface {
+	AttachedGIFImage(context.Context, chat.AttachedGIF) (image.Image, error)
+}
+
 type imageEntry struct {
 	bitmap    *ui.Bitmap
 	animation *media.Animation
@@ -28,10 +32,10 @@ type imageEntry struct {
 }
 
 type imageJob struct {
-	ctx        context.Context
-	backend    imageBackend
-	attachment chat.Attachment
-	entry      *imageEntry
+	ctx   context.Context
+	key   string
+	load  func(context.Context) (image.Image, error)
+	entry *imageEntry
 }
 
 func (a *App) resetImageLoads() {
@@ -76,7 +80,7 @@ func (a *App) imageWorker() {
 			var err error
 			if job.ctx.Err() == nil {
 				ctx, cancel := context.WithTimeout(job.ctx, 20*time.Second)
-				img, err = job.backend.AttachmentImage(ctx, job.attachment)
+				img, err = job.load(ctx)
 				cancel()
 			}
 			a.dispatch(func() {
@@ -84,7 +88,7 @@ func (a *App) imageWorker() {
 					return
 				}
 				defer a.invalidate()
-				entry := a.images[job.attachment.AttachmentDataRef.ResourceName]
+				entry := a.images[job.key]
 				if entry != job.entry || job.ctx.Err() != nil {
 					return
 				}
@@ -114,13 +118,28 @@ func (a *App) imageWorker() {
 
 func (a *App) queueImage(attachment chat.Attachment) *imageEntry {
 	key := attachment.AttachmentDataRef.ResourceName
+	b, ok := a.backend.(imageBackend)
+	if !ok {
+		return nil
+	}
+	return a.queuePreview(key, func(ctx context.Context) (image.Image, error) { return b.AttachmentImage(ctx, attachment) })
+}
+
+func (a *App) queueGIF(gif chat.AttachedGIF) *imageEntry {
+	b, ok := a.backend.(gifBackend)
+	if !ok {
+		return nil
+	}
+	return a.queuePreview("gif:"+gif.URI, func(ctx context.Context) (image.Image, error) { return b.AttachedGIFImage(ctx, gif) })
+}
+
+func (a *App) queuePreview(key string, load func(context.Context) (image.Image, error)) *imageEntry {
 	a.imageClock++
 	if entry := a.images[key]; entry != nil {
 		entry.used = a.imageClock
 		return entry
 	}
-	b, ok := a.backend.(imageBackend)
-	if !ok || a.closed || a.closing {
+	if a.closed || a.closing {
 		return nil
 	}
 	if a.imageQueue == nil {
@@ -140,7 +159,7 @@ func (a *App) queueImage(attachment chat.Attachment) *imageEntry {
 	}
 	entry := &imageEntry{loading: true, used: a.imageClock}
 	select {
-	case a.imageQueue <- imageJob{ctx: a.imageCtx, backend: b, attachment: attachment, entry: entry}:
+	case a.imageQueue <- imageJob{ctx: a.imageCtx, key: key, load: load, entry: entry}:
 		a.images[key] = entry
 		return entry
 	default:
@@ -157,7 +176,22 @@ func (a *App) attachment(c *ui.Context, attachment chat.Attachment) {
 		ui.Text(c, "Attachment · "+label).FontSize(12).TextColor(a.theme.TextMuted)
 		return
 	}
-	entry := a.queueImage(attachment)
+	_, supported := a.backend.(imageBackend)
+	a.inlineImage(c, label, a.queueImage(attachment), supported, func() {
+		delete(a.images, attachment.AttachmentDataRef.ResourceName)
+		a.queueImage(attachment)
+	})
+}
+
+func (a *App) attachedGIF(c *ui.Context, gif chat.AttachedGIF) {
+	_, supported := a.backend.(gifBackend)
+	a.inlineImage(c, "GIF", a.queueGIF(gif), supported, func() {
+		delete(a.images, "gif:"+gif.URI)
+		a.queueGIF(gif)
+	})
+}
+
+func (a *App) inlineImage(c *ui.Context, label string, entry *imageEntry, supported bool, retry func()) {
 	ui.Column(c).Gap(6).AlignItems(ui.Start).MaxWidthPercent(100).Children(func() {
 		switch {
 		case entry != nil && entry.bitmap != nil:
@@ -174,14 +208,13 @@ func (a *App) attachment(c *ui.Context, attachment chat.Attachment) {
 			ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
 				ui.Text(c, entry.err).FontSize(12).TextColor(a.theme.TextMuted)
 				if ui.Button(c, "Retry image").Clicked() {
-					delete(a.images, attachment.AttachmentDataRef.ResourceName)
-					a.queueImage(attachment)
+					retry()
 					a.invalidate()
 				}
 			})
 		default:
 			text := "Loading image…"
-			if _, ok := a.backend.(imageBackend); !ok {
+			if !supported {
 				text = "Image preview unavailable"
 			}
 			ui.Column(c).Width(240).MaxWidthPercent(100).Height(100).Radius(8).Background(a.theme.Surface).Center().Children(func() {

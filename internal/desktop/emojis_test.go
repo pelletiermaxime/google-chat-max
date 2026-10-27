@@ -94,6 +94,37 @@ func reactionState(emoji chat.Emoji) chat.Reactions {
 	return chat.Reactions{Summaries: []chat.ReactionSummary{{Emoji: emoji, Count: 1}}, Mine: []chat.Reaction{{Name: "spaces/design/messages/a/reactions/own", Emoji: emoji, User: chat.User{Name: "users/demo"}}}}
 }
 
+func TestNativeReactionHoverShowsParticipantsWithoutMutation(t *testing.T) {
+	a, _, m := actionFixture(t)
+	defer a.Close()
+	a.selfUser = "users/demo"
+	emoji := chat.Emoji{Unicode: "👍"}
+	state := reactionState(emoji)
+	state.Summaries[0].Count = 3
+	state.All = append([]chat.Reaction{
+		{Emoji: emoji, User: chat.User{Name: "users/alex"}},
+		{Emoji: emoji, User: chat.User{Name: "users/sam", DisplayName: "Sam Rivera"}},
+		{Emoji: chat.Emoji{Unicode: "❤️"}, User: chat.User{Name: "users/jamie", DisplayName: "Jamie Chen"}},
+	}, state.Mine...)
+	a.users["users/alex"] = chat.User{Name: "users/alex", DisplayName: "Alex Morgan"}
+	b := &fakeReactions{state: state, calls: make(chan reactionCall, 8)}
+	a.backend = b
+	a.reactions = map[string]*reactionEntry{m.Name: {loaded: true, state: state}}
+	tt := ui.NewTester(a.View, 1180, 900)
+	rect, ok := tt.Find("Remove 👍 · 3")
+	if !ok {
+		t.Fatal("reaction badge is missing")
+	}
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	tt.Advance(time.Second)
+	if !tt.HasText("👍 · 3\nAlex Morgan\nSam Rivera\nYou") {
+		t.Fatalf("hover tooltip did not show only this emoji's participants: %q", tt.Texts())
+	}
+	if len(b.calls) != 0 {
+		t.Fatal("hovering over participants changed a reaction")
+	}
+}
+
 func TestNativeQuickCustomReactionsAndSearchablePicker(t *testing.T) {
 	a, callbacks, m := actionFixture(t)
 	defer a.Close()

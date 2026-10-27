@@ -115,6 +115,14 @@ func (a *App) refreshHistory(thread bool) {
 			} else {
 				if thread {
 					a.threadRoot = result.Root
+					if a.threadRoot != nil {
+						for _, m := range *v.overlay {
+							if m.Name == a.threadRoot.Name {
+								merged := mergeMessage(*a.threadRoot, m)
+								a.threadRoot = &merged
+							}
+						}
+					}
 				} else {
 					a.historyFetched, a.historyLoaded = time.Now(), true
 					a.updated = time.Now()

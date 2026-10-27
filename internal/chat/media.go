@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -22,14 +23,58 @@ const maxImageDownloadBytes = 10 << 20
 const maxImagePixels = 16_000_000
 const previewWidth, previewHeight = 960, 720
 
+// Picker GIFs are separate from uploaded attachments in Google's message API.
+type AttachedGIF struct {
+	URI string `json:"uri"`
+}
+
+func attachedGIFURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && len(raw) <= 8192 && u.Scheme == "https" && u.User == nil && u.Port() == "" && strings.EqualFold(u.Hostname(), "media.tenor.com")
+}
+
+// AttachedGIFImage fetches public Tenor media without the OAuth transport used
+// by Chat API calls. Redirects must stay on the same allowed media host.
+func (c *Client) AttachedGIFImage(ctx context.Context, gif AttachedGIF) (image.Image, error) {
+	return downloadAttachedGIF(ctx, gif, http.DefaultTransport)
+}
+
+func downloadAttachedGIF(ctx context.Context, gif AttachedGIF, transport http.RoundTripper) (image.Image, error) {
+	if !attachedGIFURL(gif.URI) {
+		return nil, errors.New("inline preview is not supported for this GIF URL")
+	}
+	client := &http.Client{Transport: transport, Timeout: 20 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) > 3 || !attachedGIFURL(req.URL.String()) {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gif.URI, nil)
+	if err != nil {
+		return nil, errors.New("could not prepare the GIF preview")
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("could not download the GIF preview")
+	}
+	defer res.Body.Close()
+	return readImagePreview(ctx, res)
+}
+
 type Attachment struct {
-	Name              string `json:"name"`
-	ContentName       string `json:"contentName"`
-	ContentType       string `json:"contentType"`
-	Source            string `json:"source"`
-	AttachmentDataRef struct {
-		ResourceName string `json:"resourceName"`
-	} `json:"attachmentDataRef"`
+	Name              string            `json:"name"`
+	ContentName       string            `json:"contentName"`
+	ContentType       string            `json:"contentType"`
+	Source            string            `json:"source"`
+	AttachmentDataRef AttachmentDataRef `json:"attachmentDataRef"`
+}
+
+type AttachmentDataRef struct {
+	ResourceName          string `json:"resourceName,omitempty"`
+	AttachmentUploadToken string `json:"attachmentUploadToken,omitempty"`
 }
 
 func (a Attachment) IsImage() bool {
@@ -65,6 +110,10 @@ func (c *Client) AttachmentImage(ctx context.Context, a Attachment) (image.Image
 		return nil, errors.New("could not download the image preview")
 	}
 	defer res.Body.Close()
+	return readImagePreview(ctx, res)
+}
+
+func readImagePreview(ctx context.Context, res *http.Response) (image.Image, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, errors.New("image preview is unavailable; check access or try again")
 	}

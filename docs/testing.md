@@ -73,9 +73,9 @@ an explicit user action or authorization.
 ## Release builds
 
 Pushing a new `v*` tag runs the [Linux release workflow](../.github/workflows/release-linux.yml).
-It tests, vets, and builds on Ubuntu 22.04, then publishes an experimental GitHub
-prerelease. The archive contains the binary, documentation, third-party notices,
-and `BUILD.txt`; a SHA-256 file is attached separately. Publication uses GitHub's
+It tests, vets, and builds on Ubuntu 22.04, then publishes a regular GitHub
+release marked as latest. The archive contains the binary, documentation,
+third-party notices, and `BUILD.txt`; a SHA-256 file is attached separately. Publication uses GitHub's
 built-in token and needs no Google credentials.
 
 To build the same package locally:

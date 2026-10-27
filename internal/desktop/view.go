@@ -24,6 +24,7 @@ func (a *App) View(c *ui.Context) {
 			}
 		})
 	})
+	a.syncReadState(c)
 }
 
 func (a *App) sidebar(c *ui.Context) {
@@ -140,6 +141,7 @@ func (a *App) history(c *ui.Context) {
 			}
 		})
 		ui.Text(c, s.Name).FontSize(11).TextColor(t.TextMuted).Selectable()
+		a.readSyncNotice(c)
 	})
 	ui.Column(c).Height(1).WidthPercent(100).Background(t.Border)
 	a.historyControls(c, false)
@@ -199,11 +201,19 @@ func (a *App) message(c *ui.Context, m chat.Message) {
 				ui.Text(c, m.Author()).FontSize(12).Bold().SingleLine().TextColor(t.TextMuted)
 			}
 			a.messageContent(c, m)
-			ui.Row(c).Gap(10).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-				if m.ThreadReply {
-					ui.Text(c, "Thread reply").FontSize(10).TextColor(t.TextMuted)
-				}
-				ui.Text(c, m.CreateTime.Local().Format(time.Kitchen)).FontSize(10).TextColor(t.TextMuted)
+			ui.Row(c).WidthPercent(100).Gap(10).AlignItems(ui.End).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					a.messageReactions(c, m)
+				})
+				ui.Row(c).Gap(10).Shrink(0).AlignItems(ui.Center).Children(func() {
+					if m.ThreadReply {
+						ui.Text(c, "Thread reply").FontSize(10).TextColor(t.TextMuted)
+					}
+					if !m.LastUpdateTime.IsZero() && m.LastUpdateTime.After(m.CreateTime) {
+						ui.Text(c, "Edited").FontSize(10).TextColor(t.TextMuted)
+					}
+					ui.Text(c, m.CreateTime.Local().Format(time.Kitchen)).FontSize(10).TextColor(t.TextMuted)
+				})
 			})
 			if row.Hovered() || row.FocusWithin() || (a.emojis.open && a.emojis.message == m.Name) {
 				a.messageActions(c, m)
@@ -219,7 +229,7 @@ func (a *App) messageContent(c *ui.Context, m chat.Message) {
 	text := m.Text
 	if text == "" && len(m.Cards) == 0 && len(m.CardsV2) == 0 {
 		text = m.FallbackText
-		if text == "" && len(m.Attachment) == 0 {
+		if text == "" && len(m.Attachment) == 0 && len(m.AttachedGIFs) == 0 {
 			text = "[Non-text message]"
 		}
 	}
@@ -228,14 +238,19 @@ func (a *App) messageContent(c *ui.Context, m chat.Message) {
 		text = string([]rune(text)[:min(4000, utf8.RuneCountInString(text))]) + "\n[Message shortened for display]"
 	}
 	if text != "" {
-		body := ui.Text(c, text).Selectable()
+		body := messageText(c, text)
 		body.ContextMenu(func(menu *ui.Menu) { a.messageMenu(menu, m, true) })
 	}
 	a.messageCards(c, m)
 	for i, attachment := range m.Attachment {
 		a.attachment(c.Key(fmt.Sprintf("attachment-%d", i)), attachment)
 	}
-	a.messageReactions(c, m)
+	for i, gif := range m.AttachedGIFs[:min(len(m.AttachedGIFs), 4)] {
+		a.attachedGIF(c.Key(fmt.Sprintf("gif-%d", i)), gif)
+	}
+	if len(m.AttachedGIFs) > 4 {
+		ui.Text(c, "[Additional GIFs omitted]").FontSize(12).TextColor(a.theme.TextMuted)
+	}
 	if label, show := a.threadControl(m); show {
 		if n := a.threadActivity[m.Thread.Name]; n > 0 {
 			label += fmt.Sprintf(" · %d new", n)

@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -186,6 +187,42 @@ func (a *App) reactionChanged(message string) {
 	}
 }
 
+func (a *App) reactionTooltip(emoji chat.Emoji, count int, e *reactionEntry) string {
+	title := fmt.Sprintf("%s · %d", emoji.Label(), count)
+	if !e.loaded {
+		if e.err != "" {
+			return title + "\nCould not load who reacted"
+		}
+		return title + "\nLoading who reacted…"
+	}
+	seen := make(map[string]bool)
+	var names []string
+	for _, reactions := range [][]chat.Reaction{e.state.All, e.state.Mine} {
+		for _, reaction := range reactions {
+			if reaction.Emoji.Key() != emoji.Key() || reaction.User.Name == "" || seen[reaction.User.Name] {
+				continue
+			}
+			seen[reaction.User.Name] = true
+			if len(names) >= 20 {
+				continue
+			}
+			user := reaction.User.WithFallback(a.users[reaction.User.Name])
+			name := (chat.Message{Sender: user}).Author()
+			if user.Name == a.selfUser {
+				name = "You"
+			}
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return title + "\nNames unavailable"
+	}
+	if remaining := max(count, len(seen)) - len(names); remaining > 0 {
+		names = append(names, fmt.Sprintf("and %d more", remaining))
+	}
+	return title + "\n" + strings.Join(names, "\n")
+}
+
 func (a *App) messageReactions(c *ui.Context, m chat.Message) {
 	if _, ok := a.backend.(reactionBackend); !ok {
 		return
@@ -214,7 +251,7 @@ func (a *App) messageReactions(c *ui.Context, m chat.Message) {
 				if owned {
 					label = fmt.Sprintf("Remove %s · %d", emoji.Label(), summary.Count)
 				}
-				button := ui.ButtonBase(c.Key(emoji.Key())).Label(label).Tooltip(label).Padding(4, 8).Radius(12).Border(1, a.theme.Border).Disabled(!e.loaded || e.busy || e.loading || e.intent != nil || a.closing)
+				button := ui.ButtonBase(c.Key(emoji.Key())).Label(label).Tooltip(a.reactionTooltip(emoji, summary.Count, e)).Padding(4, 8).Radius(12).Border(1, a.theme.Border).Disabled(!e.loaded || e.busy || e.loading || e.intent != nil || a.closing)
 				if owned {
 					button.Background(a.theme.SurfacePressed).BorderColor(a.theme.TextMuted)
 				} else {

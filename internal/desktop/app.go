@@ -29,6 +29,8 @@ type App struct {
 	theme        *ui.Theme
 	demo         bool
 	closed       bool
+	focused      bool
+	readSync     readSyncState
 	openSettings func()
 
 	spaces                               []chat.Space
@@ -50,6 +52,9 @@ type App struct {
 	authorsCancel                        context.CancelFunc
 	spaceIdentityCancel                  context.CancelFunc
 	spaceIdentityGeneration              uint64
+	spaceMetadataQueue                   []*spaceMetadataJob
+	spaceMetadataPending                 map[string]*spaceMetadataJob
+	spaceMetadataActive                  int
 	duringRead                           []chat.Message
 	reconcilePending                     bool
 	activity                             map[string]int
@@ -80,6 +85,10 @@ type App struct {
 	threadActivity                       map[string]int
 	drafts                               map[string]*draft
 	focusDraft                           string
+	clipboard                            imageClipboard
+	pasteBusy                            bool
+	draftImageBytes                      int
+	edit                                 *messageEdit
 	emojis                               emojiUIState
 	reactions                            map[string]*reactionEntry
 	reactionClock                        uint64
@@ -139,6 +148,10 @@ func (a *App) RefreshSpaces() {
 	}
 	a.spaceIdentityGeneration++
 	a.loading, a.spacesError = true, ""
+	listedBefore := make(map[string]bool, len(a.spaces))
+	for _, space := range a.spaces {
+		listedBefore[space.Name] = true
+	}
 	backend := a.backend
 	go func() {
 		var err error
@@ -171,6 +184,7 @@ func (a *App) RefreshSpaces() {
 				}
 				for i := range spaces {
 					old := previous[spaces[i].Name]
+					delete(previous, spaces[i].Name)
 					if old.LastActiveTime.After(spaces[i].LastActiveTime) {
 						spaces[i].LastActiveTime = old.LastActiveTime
 					}
@@ -182,6 +196,13 @@ func (a *App) RefreshSpaces() {
 					}
 					if len(spaces[i].Participants) == 0 {
 						spaces[i].Participants = old.Participants
+					}
+				}
+				// A new conversation may arrive after this list request starts.
+				// Retain it if the older snapshot does not include it yet.
+				for _, space := range previous {
+					if !listedBefore[space.Name] && len(spaces) < 1000 {
+						spaces = append(spaces, space)
 					}
 				}
 				a.backend, a.spaces = backend, spaces
@@ -198,6 +219,11 @@ func (a *App) RefreshSpaces() {
 					a.selectSpace("")
 				}
 				a.resolveSpaceIdentities()
+				for _, space := range spaces {
+					if space.SpaceType == "" {
+						a.queueSpaceMetadata(space)
+					}
+				}
 			}
 			a.invalidate()
 		})
@@ -205,6 +231,7 @@ func (a *App) RefreshSpaces() {
 }
 
 func (a *App) selectSpace(name string) {
+	a.cancelReadSync()
 	a.cacheConversation()
 	a.resetImageLoads()
 	a.resetReactionReads()

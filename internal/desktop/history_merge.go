@@ -39,6 +39,9 @@ func mergeMessage(existing, incoming chat.Message) chat.Message {
 	if len(incoming.Attachment) == 0 {
 		incoming.Attachment = existing.Attachment
 	}
+	if len(incoming.AttachedGIFs) == 0 {
+		incoming.AttachedGIFs = existing.AttachedGIFs
+	}
 	if incoming.QuotedMessageMetadata == nil {
 		incoming.QuotedMessageMetadata = existing.QuotedMessageMetadata
 	}

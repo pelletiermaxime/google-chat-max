@@ -58,8 +58,9 @@ type Message struct {
 	Thread                 struct {
 		Name string `json:"name"`
 	} `json:"thread"`
-	ThreadReply bool         `json:"threadReply"`
-	Attachment  []Attachment `json:"attachment"`
+	ThreadReply  bool          `json:"threadReply"`
+	Attachment   []Attachment  `json:"attachment"`
+	AttachedGIFs []AttachedGIF `json:"attachedGifs"`
 }
 
 func (m Message) Author() string {
@@ -125,9 +126,26 @@ func (c *Client) getURL(ctx context.Context, endpoint string, out any) error {
 	return nil
 }
 
+const spaceFields = "name,displayName,spaceType,spaceThreadingState,lastActiveTime,singleUserBotDm"
+
+// Space resolves metadata for a conversation first discovered through an event.
+func (c *Client) Space(ctx context.Context, name string) (Space, error) {
+	if !validSpace(name) {
+		return Space{}, errors.New("invalid conversation resource name")
+	}
+	var space Space
+	if err := c.get(ctx, "/"+name, url.Values{"fields": {spaceFields}}, &space); err != nil {
+		return Space{}, err
+	}
+	if space.Name != name || space.SpaceType == "" {
+		return Space{}, errors.New("Google Chat returned incomplete conversation metadata")
+	}
+	return space, nil
+}
+
 func (c *Client) Spaces(ctx context.Context) ([]Space, error) {
 	var spaces []Space
-	query := url.Values{"pageSize": {"100"}, "fields": {"spaces(name,displayName,spaceType,spaceThreadingState,lastActiveTime,singleUserBotDm),nextPageToken"}}
+	query := url.Values{"pageSize": {"100"}, "fields": {"spaces(" + spaceFields + "),nextPageToken"}}
 	for range 10 {
 		var result struct {
 			Spaces        []Space `json:"spaces"`

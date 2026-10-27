@@ -39,6 +39,10 @@ func main() {
 			MinWidth: 760, MinHeight: 520, Content: ui.View(app.View),
 		})
 		mygo.App.OnSecondInstance(func([]string, string) { window.Show(); window.Focus() })
+		window.OnFocus(func() { app.SetFocused(true) })
+		window.OnBlur(func() { app.SetFocused(false) })
+		window.OnHide(func() { app.SetFocused(false) })
+		app.SetFocused(window.IsFocused())
 		window.OnClose(func(event *mygo.CloseEvent) {
 			event.PreventDefault()
 			app.Shutdown(func(err error) {

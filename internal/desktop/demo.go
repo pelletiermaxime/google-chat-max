@@ -14,6 +14,10 @@ type demoBackend struct{}
 
 func (demoBackend) Self() string { return "users/demo" }
 
+func (demoBackend) Edit(_ context.Context, name, text string) (chat.Message, error) {
+	return chat.Message{Name: name, Text: text, LastUpdateTime: time.Now().UTC()}, nil
+}
+
 func (demoBackend) Send(_ context.Context, space, thread, text, id string) (chat.Message, error) {
 	m := chat.Message{Name: space + "/messages/" + id, Text: text, CreateTime: time.Now().UTC(), Sender: chat.User{Name: "users/demo", DisplayName: "You"}, ThreadReply: thread != ""}
 	if thread == "" {
@@ -45,6 +49,19 @@ func (b demoBackend) SendQuoted(ctx context.Context, space, thread, text, id str
 	return m, err
 }
 
+func (demoBackend) UploadImage(_ context.Context, space string, upload chat.ImageUpload) (chat.UploadedAttachment, error) {
+	return chat.UploadedAttachment{Space: space, Filename: upload.Filename, ContentType: upload.ContentType, DataRef: chat.AttachmentDataRef{AttachmentUploadToken: "offline-demo"}}, nil
+}
+
+func (b demoBackend) SendAttached(ctx context.Context, space, thread, text, id string, quote *chat.QuotedMessageMetadata, attachments []chat.UploadedAttachment) (chat.Message, error) {
+	m, err := b.Send(ctx, space, thread, text, id)
+	m.QuotedMessageMetadata = quote
+	for _, attachment := range attachments {
+		m.Attachment = append(m.Attachment, chat.Attachment{ContentName: attachment.Filename, ContentType: attachment.ContentType, AttachmentDataRef: attachment.DataRef})
+	}
+	return m, err
+}
+
 func (demoBackend) Spaces(context.Context) ([]chat.Space, error) {
 	return []chat.Space{
 		{Name: "spaces/design", DisplayName: "Design studio", SpaceType: "SPACE"},
@@ -62,7 +79,7 @@ func (demoBackend) Messages(_ context.Context, space string) ([]chat.Message, er
 	texts := []struct{ author, text string }{
 		{"Alex Morgan", "A quieter place to catch up.\n\nThe conversation list is on the left, and the recent history is right here."},
 		{"Sam Rivera", "The extra space makes it easy to catch up. Can we keep replies in their own threads?"},
-		{"Alex Morgan", "Absolutely. Hover over a message to reply in a thread, quote it, or add a reaction. Ctrl+Enter sends your draft."},
+		{"Alex Morgan", "Absolutely. Hover over a message to reply in a thread, quote it, or add a reaction. Enter sends your draft; Shift+Enter adds a new line."},
 		{"Jamie Chen", "The thread view keeps the original message in sight while we talk through the details."},
 		{"Sam Rivera", "Sounds good. This demo uses sample conversations, so feel free to explore."},
 	}

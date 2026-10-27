@@ -85,14 +85,19 @@ See the [Pub/Sub IAM reference](https://cloud.google.com/pubsub/docs/access-cont
 Run this command and approve the requested permissions:
 
 ```sh
-gws auth login --scopes 'openid,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/chat.spaces.readonly,https://www.googleapis.com/auth/chat.memberships.readonly,https://www.googleapis.com/auth/chat.messages,https://www.googleapis.com/auth/chat.customemojis.readonly,https://www.googleapis.com/auth/pubsub'
+gws auth login --scopes 'openid,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/chat.spaces.readonly,https://www.googleapis.com/auth/chat.memberships.readonly,https://www.googleapis.com/auth/chat.messages,https://www.googleapis.com/auth/chat.users.readstate,https://www.googleapis.com/auth/chat.customemojis.readonly,https://www.googleapis.com/auth/pubsub'
 gws auth status
 ```
 
 This grants access to your profile, conversations, messages, reactions, custom
-emoji, and Pub/Sub delivery resources. Add the same scopes in the OAuth client's
-Data Access settings if prompted. Custom emoji also need to be enabled by your
-Workspace administrator.
+emoji, conversation read status, and Pub/Sub delivery resources. Add the same
+scopes in the OAuth client's Data Access settings if prompted. Custom emoji also
+need to be enabled by your Workspace administrator.
+
+If you signed in before read-status syncing was added, repeat the scoped login
+above and restart the app. Reading a conversation while the window is focused
+and scrolled to its latest messages updates your Google Chat read status.
+Thread replies have separate read state that Google's public API cannot update.
 
 The app needs a saved user OAuth login with a refresh token. A `gcloud` login,
 service account, or access token alone isn't enough. Keep credentials private;

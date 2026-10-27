@@ -17,7 +17,7 @@ func TestReactionDesiredStateRetryAndOwnership(t *testing.T) {
 			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/reactions"):
-					if r.URL.Query().Get("filter") != `user.name = "users/self"` {
+					if filter := r.URL.Query().Get("filter"); filter != "" && filter != `user.name = "users/self"` {
 						t.Error("reaction lookup must use the resolved caller ID")
 					}
 					reactions := []Reaction{}
@@ -77,6 +77,55 @@ func TestReactionDesiredStateRetryAndOwnership(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReactionParticipantsPaginationAndOwnership(t *testing.T) {
+	emoji := Emoji{Unicode: "👍"}
+	other := Reaction{Name: "spaces/a/messages/m/reactions/other", Emoji: emoji, User: User{Name: "users/other", DisplayName: "Alex Morgan"}}
+	own := Reaction{Name: "spaces/a/messages/m/reactions/own", Emoji: emoji, User: User{Name: "users/self"}}
+	pages := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("loading participants must not mutate reactions: %s", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "/spaces/a/messages/m" {
+			json.NewEncoder(w).Encode(Message{EmojiReactionSummaries: []ReactionSummary{{Emoji: emoji, Count: 2}}})
+			return
+		}
+		pages++
+		if r.URL.Query().Get("filter") != "" {
+			t.Error("participant lookup must include other users")
+		}
+		if !strings.Contains(r.URL.Query().Get("fields"), "displayName") {
+			t.Error("participant lookup must request display names")
+		}
+		if r.URL.Query().Get("pageToken") == "" {
+			json.NewEncoder(w).Encode(map[string]any{"reactions": []Reaction{other}, "nextPageToken": "next"})
+		} else {
+			json.NewEncoder(w).Encode(map[string]any{"reactions": []Reaction{own}})
+		}
+	})
+	c := &Client{http: &http.Client{Transport: reactionTestTransport{handler}}, baseURL: "https://chat.test", self: "users/self"}
+	state, err := c.Reactions(context.Background(), "spaces/a/messages/m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 || len(state.All) != 2 || state.All[0].User.DisplayName != "Alex Morgan" {
+		t.Fatalf("reaction participants or names were lost: %+v", state)
+	}
+	if len(state.Mine) != 1 || state.Mine[0].Name != own.Name || !state.Has(emoji) {
+		t.Fatalf("another user's reaction was treated as owned: %+v", state.Mine)
+	}
+}
+
+type reactionTestTransport struct{ handler http.Handler }
+
+func (transport reactionTestTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	w := httptest.NewRecorder()
+	transport.handler.ServeHTTP(w, r)
+	return w.Result(), nil
 }
 
 func TestReactionRejectsUnverifiedOwnerAndInvalidTargets(t *testing.T) {

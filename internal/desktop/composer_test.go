@@ -93,19 +93,19 @@ func TestComposerKeyboardAndCloseWaitForPendingSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Type("one")
-	tt.TypeKey(0, ui.KeyEnter, "")
+	tt.TypeKey(ui.Shift, ui.KeyEnter, "")
 	tt.Type("two")
 	select {
 	case <-b.calls:
-		t.Fatal("plain Enter sent a message")
+		t.Fatal("Shift+Enter sent a message")
 	default:
 	}
-	tt.TypeKey(ui.Ctrl, ui.KeyEnter, "")
+	tt.TypeKey(0, ui.KeyEnter, "")
 	var call sendCall
 	select {
 	case call = <-b.calls:
 	case <-time.After(time.Second):
-		t.Fatal("Ctrl+Enter did not submit")
+		t.Fatal("Enter did not submit")
 	}
 	if call.text != "one\ntwo" {
 		t.Fatalf("multiline draft corrupted: %q", call.text)
