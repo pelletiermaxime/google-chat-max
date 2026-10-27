@@ -72,11 +72,16 @@ an explicit user action or authorization.
 
 ## Release builds
 
-Pushing a new `v*` tag runs the [Linux release workflow](../.github/workflows/release-linux.yml).
-It tests, vets, and builds on Ubuntu 22.04, then publishes a regular GitHub
-release marked as latest. The archive contains the binary, documentation,
-third-party notices, and `BUILD.txt`; a SHA-256 file is attached separately. Publication uses GitHub's
-built-in token and needs no Google credentials.
+Pushing a new `v*` tag runs the [release workflow](../.github/workflows/release.yml).
+It tests, vets, and packages Linux x86-64 on Ubuntu 22.04, Apple Silicon on
+`macos-15`, and Intel Macs on `macos-15-intel`. Publication waits for all three
+platforms and creates a regular GitHub release marked as latest. A manual
+workflow run builds and checks the packages without publishing a release.
+
+Linux gets a `.tar.gz`; each Mac architecture gets a `.dmg` with a native
+`.app` and a drag-to-Applications shortcut. Packages include documentation,
+third-party notices, and `BUILD.txt`; every download has a separate SHA-256 file.
+The workflow uses GitHub's built-in token and needs no Google credentials.
 
 To build the same package locally:
 
@@ -84,8 +89,18 @@ To build the same package locally:
 sh scripts/package-linux.sh dev
 ```
 
-Packages go in `dist/`. Local builds use the host's libc; the glibc 2.35 baseline
-applies to the Ubuntu-built release assets. Published releases aren't overwritten.
+On a Mac with Xcode command line tools, build a package for that Mac's architecture:
+
+```sh
+sh scripts/package-macos.sh dev
+```
+
+Mac packages target macOS 13+ and use ad-hoc signing. The packaging step validates
+the app's plist and signature and verifies the disk image. It does not use a
+Developer ID or notarization credentials; first launch needs macOS approval.
+
+Packages go in `dist/`. Local Linux builds use the host's libc; the glibc 2.35
+baseline applies to the Ubuntu-built release assets. Published releases aren't overwritten.
 If publication fails, check for an incomplete draft before rerunning the workflow.
 The application code still needs a license before a public open-source release.
 

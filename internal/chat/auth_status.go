@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"os/exec"
 
 	"google-chat-max/internal/settings"
 )
@@ -17,15 +16,19 @@ type AuthStatus struct {
 }
 
 func CheckAuth(ctx context.Context) AuthStatus {
+	return checkAuth(ctx, findGoogleTool)
+}
+
+func checkAuth(ctx context.Context, findTool func(string) (string, error)) AuthStatus {
 	var status AuthStatus
-	_, err := exec.LookPath("gcloud")
+	_, err := findTool("gcloud")
 	status.GCloudInstalled = err == nil
-	path, err := exec.LookPath("gws")
+	path, err := findTool("gws")
 	if err != nil {
 		return status
 	}
 	status.GWSInstalled = true
-	command := exec.CommandContext(ctx, path, "auth", "status")
+	command := googleToolCommand(ctx, path, "auth", "status")
 	output := &credentialBuffer{}
 	command.Stdout = output
 	if err := command.Run(); err != nil {

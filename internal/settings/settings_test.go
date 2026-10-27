@@ -10,10 +10,14 @@ import (
 
 func isolateConfig(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS != "linux" {
-		t.Skip("XDG configuration-path integration is Linux-specific")
-	}
 	dir := t.TempDir()
+	if runtime.GOOS == "darwin" {
+		t.Setenv("HOME", dir)
+		return filepath.Join(dir, "Library", "Application Support", "google-chat-max", "config.json")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("configuration-path integration covers Linux and macOS")
+	}
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	return filepath.Join(dir, "google-chat-max", "config.json")
 }

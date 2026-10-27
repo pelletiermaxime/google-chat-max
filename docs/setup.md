@@ -21,6 +21,25 @@ sudo pacman -S --needed gtk3 fontconfig libepoxy noto-fonts-emoji
 
 Release binaries target Linux x86-64 with glibc 2.35 or newer.
 
+## macOS
+
+Mac packages require macOS 13 or newer. Use `macos-arm64` on Apple Silicon or
+`macos-amd64` on Intel. Open the `.dmg`, drag **Google Chat Max** to
+**Applications**, and launch it there. GTK is not required on macOS.
+
+The app is ad-hoc signed without an Apple Developer ID or notarization. If
+macOS blocks the first launch, try opening the app once, then approve it in
+**System Settings → Privacy & Security → Open Anyway**.
+
+Install and sign in to the Google tools below before opening the app. The app
+checks your `PATH` first and also looks in `/opt/homebrew/bin` and `/usr/local/bin`
+for Homebrew-installed tools when launched from Finder. For a custom npm prefix
+or version manager, launch the app from a terminal that has `gws` on its `PATH`:
+
+```sh
+'/Applications/Google Chat Max.app/Contents/MacOS/google-chat-max'
+```
+
 ## 1. Install the Google tools
 
 Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
@@ -112,8 +131,10 @@ don't paste the output of `gws auth export --unmasked` into issues or files.
 For a source build, use `./bin/google-chat-max`. Enter your project ID and click
 **Save and open Chat**. Incoming messages start automatically.
 
-Settings are stored in `~/.config/google-chat-max/config.json`, or under
-`$XDG_CONFIG_HOME`. Use **Settings** in the sidebar to change the project.
+On Linux, settings are stored in `~/.config/google-chat-max/config.json`, or under
+`$XDG_CONFIG_HOME`. On macOS, they are stored in
+`~/Library/Application Support/google-chat-max/config.json`.
+Use **Settings** in the sidebar to change the project.
 
 ## Common problems
 

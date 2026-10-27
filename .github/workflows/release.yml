@@ -1,6 +1,7 @@
-name: Release Linux
+name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -9,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-linux-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -56,7 +57,7 @@ jobs:
         run: GOCACHE="$PWD/.cache/go-build" go vet -mod=readonly -p 6 ./...
       - name: Package binary, notices, and checksum
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
         run: sh scripts/package-linux.sh "$RELEASE_TAG"
       - uses: actions/upload-artifact@v7
         with:
@@ -67,9 +68,64 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-macos:
+    name: Test and package macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      GOMAXPROCS: '6'
+      CGO_ENABLED: '1'
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+      CHAT_MAX_LIVE_TEST: '0'
+      CHAT_MAX_LIVE_STREAM_TEST: '0'
+      CHAT_MAX_SOAK_TEST: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Inspect memory and architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          sysctl hw.memsize
+          test "$(go env GOOS)/$(go env GOARCH)" = "darwin/$EXPECTED_ARCH"
+      - name: Download and verify dependencies
+        run: |
+          go mod download
+          go mod verify
+      - name: Offline tests
+        run: sh scripts/check.sh
+      - name: Vet
+        run: GOCACHE="$PWD/.cache/go-build" go vet -mod=readonly -p 6 ./...
+      - name: Package app bundle, disk image, notices, and checksum
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+        run: sh scripts/package-macos.sh "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.arch }}-release
+          path: |
+            dist/*.dmg
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish release
-    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [build, build-macos]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
@@ -77,20 +133,28 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: linux-amd64-release
+          pattern: '*-release'
+          merge-multiple: true
           path: dist
-      - name: Create release with Linux assets
+      - name: Create release with Linux and macOS assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
-          Google Chat Max for Linux x86-64 (glibc 2.35+).
+          Google Chat Max for Linux x86-64 (glibc 2.35+) and macOS 13+
+          (Apple Silicon arm64 and Intel amd64).
 
           Download the archive and matching `.sha256` file, verify with
           `sha256sum -c google-chat-max-*-linux-amd64.tar.gz.sha256`, then extract it.
           Run `./google-chat-max -demo` to explore without credentials.
+
+          On macOS, download the disk image matching your Mac, verify its
+          `.sha256` with `shasum -a 256 -c <filename>.dmg.sha256`, then drag
+          Google Chat Max to Applications. Mac apps are ad-hoc signed, not
+          Developer ID signed or notarized; approve the first launch in
+          System Settings > Privacy & Security. See the bundled setup guide.
 
           The archive includes setup instructions, third-party notices, and
           `BUILD.txt` with source and toolchain details. Real-account access needs
@@ -99,7 +163,7 @@ jobs:
           charges. Sleep/wake, overnight use, prolonged outages, and real-account
           sends/reactions still need broader validation. See the bundled README.
           EOF
-          gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.sha256 \
+          gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.dmg dist/*.sha256 \
             --verify-tag --prerelease=false --latest \
             --title "Google Chat Max $RELEASE_TAG" \
             --notes-file "$RUNNER_TEMP/release-notes.md"

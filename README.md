@@ -1,8 +1,8 @@
 # Google Chat Max
 
-A native Google Chat app for Linux, built with Go and [MyGo](https://github.com/egoist/mygo).
+A native Google Chat app for Linux and macOS, built with Go and [MyGo](https://github.com/egoist/mygo).
 
-**Experimental.** Linux x86-64 only. Not affiliated with Google.
+**Experimental.** Linux x86-64 and macOS 13+ (Apple Silicon and Intel). Not affiliated with Google.
 
 ![Google Chat Max](docs/images/google-chat-max.png)
 
@@ -21,18 +21,31 @@ A native Google Chat app for Linux, built with Go and [MyGo](https://github.com/
 
 ## Install
 
-Download the Linux archive and its `.sha256` file from
+Download the package for your system and its `.sha256` file from
 [Releases](https://github.com/pelletiermaxime/google-chat-max/releases).
-For version 0.2.0:
+
+### Linux
+
+For version 0.2.1:
 
 ```sh
-sha256sum -c google-chat-max-v0.2.0-linux-amd64.tar.gz.sha256
-tar -xzf google-chat-max-v0.2.0-linux-amd64.tar.gz
-cd google-chat-max-v0.2.0-linux-amd64
+sha256sum -c google-chat-max-v0.2.1-linux-amd64.tar.gz.sha256
+tar -xzf google-chat-max-v0.2.1-linux-amd64.tar.gz
+cd google-chat-max-v0.2.1-linux-amd64
 ```
 
 The app requires GTK 3 and glibc 2.35+;
 see [Linux packages](docs/setup.md#linux-packages) if anything is missing.
+
+### macOS
+
+Choose the `.dmg` ending in `macos-arm64` for Apple Silicon, or `macos-amd64`
+for Intel. Verify the matching checksum with `shasum -a 256 -c <filename>.dmg.sha256`,
+open the disk image, and drag **Google Chat Max** to **Applications**.
+
+Mac packages are ad-hoc signed and are not Developer ID signed or notarized.
+For the first launch, use **System Settings → Privacy & Security → Open Anyway**
+if macOS blocks the app. See [macOS setup](docs/setup.md#macos).
 
 ## Connect your account
 
@@ -65,7 +78,8 @@ cloud resources. If cleanup fails, follow the [recovery steps](docs/setup.md#cle
 
 ## Build from source
 
-Requires Go 1.27.3+, a C compiler, and the [Linux packages](docs/setup.md#linux-packages).
+Requires Go 1.27.3+ and a C compiler. Linux needs the
+[Linux packages](docs/setup.md#linux-packages); macOS needs Xcode command line tools.
 From the repository root:
 
 ```sh

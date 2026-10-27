@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,7 +16,8 @@ func TestAuthCheckMissingToolsAndSavedLogin(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
-	status := CheckAuth(context.Background())
+	// Keep this fixture independent of real tools in macOS Homebrew prefixes.
+	status := checkAuth(context.Background(), exec.LookPath)
 	if status.GWSInstalled || status.LoginFound {
 		t.Fatal("missing tools were reported ready")
 	}
@@ -23,14 +25,14 @@ func TestAuthCheckMissingToolsAndSavedLogin(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "gws"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	status = CheckAuth(context.Background())
+	status = checkAuth(context.Background(), exec.LookPath)
 	if !status.GWSInstalled || !status.LoginFound || !status.ClientConfigured || status.SuggestedProject != "project-one" || status.GCloudInstalled {
 		t.Fatalf("saved login status not detected: %#v", status)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "gws"), []byte("#!/bin/sh\necho private-raw-error >&2\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	status = CheckAuth(context.Background())
+	status = checkAuth(context.Background(), exec.LookPath)
 	if status.Error == "" || strings.Contains(status.Error, "private-raw-error") {
 		t.Fatal("authentication errors exposed raw CLI output")
 	}

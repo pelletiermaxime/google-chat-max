@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -22,12 +21,13 @@ func Open(ctx context.Context, project string) (*Client, error) {
 	if err := settings.ValidateProjectID(project); err != nil {
 		return nil, errors.New("configure a valid Google Cloud project in Settings before opening Chat")
 	}
-	if _, err := exec.LookPath("gws"); err != nil {
+	gws, err := findGoogleTool("gws")
+	if err != nil {
 		return nil, errors.New("Google Workspace CLI (gws) was not found; install it or add it to PATH, then open Settings")
 	}
 	authCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(authCtx, "gws", "auth", "export", "--unmasked")
+	command := googleToolCommand(authCtx, gws, "auth", "export", "--unmasked")
 	output := &credentialBuffer{}
 	command.Stdout = output
 	if err := command.Run(); err != nil {
