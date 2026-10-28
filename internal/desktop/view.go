@@ -135,12 +135,17 @@ func (a *App) history(c *ui.Context) {
 	s := a.selectedSpace()
 	ui.Column(c).Padding(26, 32, 20, 32).Gap(7).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(16).Children(func() {
+			if privateConversation(s) {
+				a.avatar(c, s.AvatarURL, s.Title(), 36)
+			}
 			ui.Text(c, s.Title()).FontSize(24).Bold().SingleLine().Grow(1)
 			if ui.Button(c.Key("refresh-history"), "Refresh messages").Disabled(a.reading).Clicked() {
 				a.refreshMessages()
 			}
 		})
-		ui.Text(c, s.Name).FontSize(11).TextColor(t.TextMuted).Selectable()
+		if !privateConversation(s) {
+			ui.Text(c, s.Name).FontSize(11).TextColor(t.TextMuted).Selectable()
+		}
 		a.readSyncNotice(c)
 	})
 	ui.Column(c).Height(1).WidthPercent(100).Background(t.Border)
@@ -197,7 +202,8 @@ func (a *App) message(c *ui.Context, m chat.Message) {
 			Padding(12, 16).Gap(8).Radius(16).Background(fill).Focusable().Label(label)
 		bubble.ContextMenu(func(menu *ui.Menu) { a.messageMenu(menu, m, false) })
 		bubble.Children(func() {
-			if !own {
+			s := a.selectedSpace()
+			if !own && (s.SpaceType != "DIRECT_MESSAGE" || s.SingleUserBotDM) {
 				ui.Text(c, m.Author()).FontSize(12).Bold().SingleLine().TextColor(t.TextMuted)
 			}
 			a.messageContent(c, m)
